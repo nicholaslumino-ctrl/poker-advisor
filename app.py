@@ -4,7 +4,7 @@ from collections import Counter
 
 RANKS = '23456789TJQKA'
 RANK_VALUES = {r: i for i, r in enumerate(RANKS, 2)}
-SUITS = [('♠', 's'), ('♥', 'h'), ('♦', 'd'), ('♣', 'c')]
+SUIT_SYMBOLS = {'s':'♠', 'h':'♥', 'd':'♦', 'c':'♣'}
 SUIT_COLOR = {'s': 'black', 'c': 'black', 'h': 'red', 'd': 'red'}
 
 class Card:
@@ -195,8 +195,7 @@ def categorize_hand(hole_cards, board_cards):
         else:
             return "AIR", "Nothing"
 
-def get_strategic_recommendation(hand_category, pair_context, board_texture, 
-                                   equity, pot_size, bet_to_call, street):
+def get_strategic_recommendation(hand_category, pair_context, board_texture, equity, pot_size, bet_to_call, street):
     facing_bet = bet_to_call > 0
     pot_odds = (bet_to_call / (pot_size + bet_to_call) * 100) if facing_bet else 0
     result = {"action": "", "sizing": "", "reasoning": "", "game_plan": ""}
@@ -205,95 +204,100 @@ def get_strategic_recommendation(hand_category, pair_context, board_texture,
         if not facing_bet:
             if board_texture == "DRY" and street in ["Flop", "Turn"]:
                 result["action"] = "🎣 CHECK (TRAP)"
-                result["reasoning"] = f"Monster hand on a {board_texture.lower()} board. Slow-play to induce bluffs."
-                result["game_plan"] = "If checked back, bet big next street. If they bet, raise big."
+                result["reasoning"] = f"Monster on {board_texture.lower()} board. Slow-play to induce bluffs."
+                result["game_plan"] = "Bet big next street if checked back. Raise if they bet."
             else:
                 result["action"] = "🟢 BET"
                 result["sizing"] = "60-75% pot"
-                result["reasoning"] = f"Board is {board_texture.lower()} — bet for protection + value."
-                result["game_plan"] = "Keep betting for value unless board gets scary."
+                result["reasoning"] = f"{board_texture.lower()} board — bet for protection + value."
+                result["game_plan"] = "Keep betting for value."
         else:
             result["action"] = "🟢 RAISE"
             result["sizing"] = "3x their bet"
-            result["reasoning"] = "Facing a bet with a monster — raise big for max value."
-            result["game_plan"] = "Aim to get all-in by the river."
+            result["reasoning"] = "Monster facing a bet — raise big for max value."
+            result["game_plan"] = "Get all-in by river."
+    
     elif hand_category == "STRONG":
         if not facing_bet:
             result["action"] = "🟢 BET"
             result["sizing"] = "50-65% pot"
             result["reasoning"] = f"{pair_context or 'Strong hand'} — bet for value/protection."
-            result["game_plan"] = "Continue betting unless texture gets scary."
+            result["game_plan"] = "Continue betting."
         else:
             if equity > pot_odds + 20:
                 result["action"] = "🟢 RAISE"
-                result["sizing"] = "2.5-3x their bet"
-                result["reasoning"] = "Equity far exceeds needed — raise for value."
+                result["sizing"] = "2.5-3x"
+                result["reasoning"] = "Equity far exceeds pot odds — raise for value."
             elif equity > pot_odds:
                 result["action"] = "🟢 CALL"
-                result["reasoning"] = "Profitable call given the odds."
+                result["reasoning"] = "Profitable call."
             else:
-                result["action"] = "🟡 MARGINAL - lean call"
-                result["reasoning"] = "Close spot — factor in opponent tendencies."
+                result["action"] = "🟡 CLOSE CALL"
+                result["reasoning"] = "Very close — consider opponent tendencies."
             result["game_plan"] = "Re-evaluate next street."
+    
     elif hand_category == "MEDIUM":
         if not facing_bet:
             if board_texture == "DRY":
-                result["action"] = "🟡 BET SMALL"
+                result["action"] = "🟡 SMALL BET"
                 result["sizing"] = "30-40% pot"
-                result["reasoning"] = "Thin value bet — may get called by worse."
+                result["reasoning"] = "Thin value — can get called by worse."
             else:
                 result["action"] = "⚪ CHECK"
-                result["reasoning"] = "Wet board + medium hand = control pot size."
+                result["reasoning"] = "Wet board — control pot size."
         else:
             if equity > pot_odds:
                 result["action"] = "🟡 CALL"
-                result["reasoning"] = "Marginal but profitable."
+                result["reasoning"] = "Profitable but marginal."
             else:
                 result["action"] = "🔴 FOLD"
-                result["reasoning"] = "Not enough equity to continue."
-        result["game_plan"] = "Play cautiously here."
+                result["reasoning"] = "Insufficient equity."
+        result["game_plan"] = "Play cautiously."
+    
     elif hand_category == "DRAWING":
         if not facing_bet:
             if pair_context == "Combo Draw":
                 result["action"] = "🟢 BET (semi-bluff)"
                 result["sizing"] = "60-70% pot"
-                result["reasoning"] = "Combo draw = huge equity — bet to build pot or win now."
+                result["reasoning"] = "Combo draw has huge equity."
             else:
                 result["action"] = "⚪ CHECK"
-                result["reasoning"] = "Speculative draw — see next card cheaply."
+                result["reasoning"] = "See next card cheap."
         else:
             if equity > pot_odds:
                 if equity > pot_odds + 20:
-                    result["action"] = "🟢 RAISE (semi-bluff)"
+                    result["action"] = "🟢 RAISE (semi)"
                 else:
                     result["action"] = "🟢 CALL"
-                result["reasoning"] = f"Draw has {equity:.0f}% equity vs {pot_odds:.0f}% needed."
+                result["reasoning"] = f"{equity:.0f}% equity vs {pot_odds:.0f}% needed."
             else:
                 result["action"] = "🔴 FOLD"
-                result["reasoning"] = "Not enough outs for the price."
-        result["game_plan"] = "Bet big if you hit. Consider bluffing scare cards if you miss."
+                result["reasoning"] = "Not enough outs."
+        result["game_plan"] = "Bet big if you hit. Bluff scary cards if you miss."
+    
     else:
         if not facing_bet:
             result["action"] = "⚪ CHECK"
-            result["reasoning"] = "No hand or draw — check and give up."
         else:
             result["action"] = "🔴 FOLD"
-            result["reasoning"] = "Nothing to continue with."
-        result["game_plan"] = "Look for a better spot next hand."
+        result["reasoning"] = "No hand to continue with."
+        result["game_plan"] = "Next hand."
+    
     return result
 
 # ============ STREAMLIT UI ============
-st.set_page_config(page_title="Click Poker Advisor", page_icon="🃏", layout="centered")
+st.set_page_config(page_title="Click Poker Advisor", page_icon="🃏", layout="wide")
 
 st.markdown("""
 <style>
-    .big-font {font-size:36px !important; font-weight:bold; text-align:center;}
-    div.stButton > button {padding: 4px 2px; font-size: 14px; height: 42px;}
+    .big-font {font-size:40px !important; font-weight:bold; text-align:center; margin:20px 0;}
+    div.stButton > button {height:45px; font-size:16px; font-weight:bold;}
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🃏 Click Poker Advisor")
 
+# Initialize session state
 if 'hole' not in st.session_state:
     st.session_state.hole = []
 if 'board' not in st.session_state:
@@ -303,95 +307,98 @@ if 'pot' not in st.session_state:
 if 'bet' not in st.session_state:
     st.session_state.bet = 0
 
-# ---- Card display function ----
 def cards_to_html(card_list):
-    suit_symbols = {'s':'♠','h':'♥','d':'♦','c':'♣'}
     out = []
     for c in card_list:
         rank, suit = c[0], c[1]
         color = SUIT_COLOR[suit]
-        out.append(f'<span style="color:{color}; font-size:28px; margin-right:8px; font-weight:bold;">{rank}{suit_symbols[suit]}</span>')
-    return ''.join(out) if out else "<i>none selected</i>"
+        symbol = SUIT_SYMBOLS[suit]
+        out.append(f'<span style="color:{color}; font-size:32px; margin-right:6px; font-weight:bold;">{rank}{symbol}</span>')
+    return ''.join(out) if out else "<i style='color:gray;'>none</i>"
 
-# ---- Display current selection ----
-st.markdown(f"**Your Hand:** {cards_to_html(st.session_state.hole)}", unsafe_allow_html=True)
-st.markdown(f"**Board:** {cards_to_html(st.session_state.board)}", unsafe_allow_html=True)
+# Display selected cards
+col_disp1, col_disp2 = st.columns(2)
+with col_disp1:
+    st.write(f"**Your Hand:** {cards_to_html(st.session_state.hole)}", unsafe_allow_html=True)
+with col_disp2:
+    st.write(f"**Board:** {cards_to_html(st.session_state.board)}", unsafe_allow_html=True)
 
-col_clear1, col_clear2 = st.columns(2)
+# Clear buttons
+col_clear1, col_clear2, col_clear3 = st.columns([1, 1, 2])
 with col_clear1:
-    if st.button("🗑️ Clear Hand"):
+    if st.button("🗑️ Clear Hand", use_container_width=True):
         st.session_state.hole = []
+        st.rerun()
 with col_clear2:
-    if st.button("🗑️ Clear Board"):
+    if st.button("🗑️ Clear Board", use_container_width=True):
         st.session_state.board = []
+        st.rerun()
 
 st.divider()
 
-# ---- Selection mode ----
-mode = st.radio("Select cards for:", ["Your Hand (2)", "Board (up to 5)"], horizontal=True)
+# Card selector mode
+mode = st.radio("👆 Select for:", ["Hand", "Board"], horizontal=True)
 
-# ---- Card grid ----
-st.write("**Click to add card:**")
-for row_num in range(4):
+st.write("**Click cards to add:**")
+
+# FIXED CARD GRID - shows all suits
+suits_list = ['s', 'h', 'd', 'c']
+for suit in suits_list:
+    st.write(f"**{SUIT_SYMBOLS[suit]} {['Spades', 'Hearts', 'Diamonds', 'Clubs'][suits_list.index(suit)]}**")
     cols = st.columns(13)
-    for col_idx in range(13):
-        card_idx = row_num * 13 + col_idx
-        if card_idx < len(RANKS):
-            rank = RANKS[card_idx]
-            with cols[col_idx]:
-                for suit_sym, suit_code in SUITS:
-                    card_str = rank + suit_code
-                    card_color = SUIT_COLOR[suit_code]
-                    if st.button(f"{rank}{suit_sym}", key=f"{card_str}_{mode}", use_container_width=True):
-                        if mode == "Your Hand (2)":
-                            if len(st.session_state.hole) < 2:
-                                if card_str not in st.session_state.hole:
-                                    st.session_state.hole.append(card_str)
-                                    st.rerun()
-                        else:
-                            if len(st.session_state.board) < 5:
-                                if card_str not in st.session_state.hole and card_str not in st.session_state.board:
-                                    st.session_state.board.append(card_str)
-                                    st.rerun()
-                    break
+    for i, rank in enumerate(RANKS):
+        card_str = rank + suit
+        with cols[i]:
+            btn_label = f"{rank}{SUIT_SYMBOLS[suit]}"
+            btn_color = SUIT_COLOR[suit]
+            
+            if st.button(btn_label, key=card_str, use_container_width=True):
+                if mode == "Hand":
+                    if len(st.session_state.hole) < 2 and card_str not in st.session_state.hole:
+                        st.session_state.hole.append(card_str)
+                        st.rerun()
+                else:
+                    if len(st.session_state.board) < 5 and card_str not in st.session_state.board and card_str not in st.session_state.hole:
+                        st.session_state.board.append(card_str)
+                        st.rerun()
 
 st.divider()
 
-# ---- Bet sizing ----
-st.write("**Bet Situation:**")
-col1, col2, col3, col4, col5 = st.columns(5)
-
-with col1:
-    if st.button("Check"):
+# Bet sizing
+st.write("**Bet Scenario:**")
+col_bet1, col_bet2, col_bet3, col_bet4, col_bet5 = st.columns(5)
+with col_bet1:
+    if st.button("Check", use_container_width=True):
         st.session_state.bet = 0
-with col2:
-    if st.button("1/3 Pot"):
-        st.session_state.bet = st.session_state.pot // 3
-with col3:
-    if st.button("1/2 Pot"):
-        st.session_state.bet = st.session_state.pot // 2
-with col4:
-    if st.button("Full Pot"):
+with col_bet2:
+    if st.button("1/3 Pot", use_container_width=True):
+        st.session_state.bet = max(1, st.session_state.pot // 3)
+with col_bet3:
+    if st.button("1/2 Pot", use_container_width=True):
+        st.session_state.bet = max(1, st.session_state.pot // 2)
+with col_bet4:
+    if st.button("Full Pot", use_container_width=True):
         st.session_state.bet = st.session_state.pot
-with col5:
-    if st.button("All-in"):
+with col_bet5:
+    if st.button("All-in", use_container_width=True):
         st.session_state.bet = st.session_state.pot * 2
 
-pot_size = st.number_input("Pot Size $", min_value=0, value=st.session_state.pot, key="pot_input")
+# Pot input
+pot_size = st.number_input("Pot Size ($)", min_value=1, value=st.session_state.pot, step=10)
 st.session_state.pot = pot_size
 bet_to_call = st.session_state.bet
 
-st.caption(f"📊 Pot: ${pot_size} | Bet to call: ${bet_to_call}")
+st.caption(f"📊 **Pot: ${pot_size} | Bet to Call: ${bet_to_call}**")
 
 st.divider()
 
-# ---- ANALYSIS ----
-if len(st.session_state.hole) == 2 and len(st.session_state.board) > 0:
+# ANALYSIS
+if len(st.session_state.hole) >= 2:
     try:
-        hole_cards = [Card(c) for c in st.session_state.hole]
+        hole_cards = [Card(c) for c in st.session_state.hole[:2]]
         board_cards = [Card(c) for c in st.session_state.board]
         
-        street = {0: "Pre-flop", 3: "Flop", 4: "Turn", 5: "River"}.get(len(board_cards), "?")
+        street = {0: "Pre-flop", 3: "Flop", 4: "Turn", 5: "River"}.get(len(board_cards), "Pre-flop")
         
         equity, draws = calculate_equity_estimate(hole_cards, board_cards)
         hand_category, pair_context = categorize_hand(hole_cards, board_cards)
@@ -407,26 +414,26 @@ if len(st.session_state.hole) == 2 and len(st.session_state.board) > 0:
         if strat["sizing"]:
             st.markdown(f"**Sizing:** {strat['sizing']}")
         
-        c1, c2, c3 = st.columns(3)
-        with c1:
+        col_metrics1, col_metrics2, col_metrics3 = st.columns(3)
+        with col_metrics1:
             st.metric("Street", street)
-        with c2:
-            st.metric("Category", hand_category)
-        with c3:
+        with col_metrics2:
+            st.metric("Hand Type", hand_category)
+        with col_metrics3:
             st.metric("Equity", f"{equity:.0f}%")
         
-        if board_texture != "N/A":
-            st.caption(f"**Board Texture:** {board_texture}")
+        col_details1, col_details2 = st.columns(2)
+        with col_details1:
+            if board_texture != "N/A":
+                st.caption(f"**Board Texture:** {board_texture}")
+        with col_details2:
+            if pair_context:
+                st.caption(f"**Hand Detail:** {pair_context}")
         
-        if pair_context:
-            st.caption(f"**Hand Type:** {pair_context}")
-        
-        st.info(f"**Why:** {strat['reasoning']}")
+        st.info(f"**Reasoning:** {strat['reasoning']}")
         st.success(f"**Game Plan:** {strat['game_plan']}")
         
     except Exception as e:
-        st.error(f"Error: {e}")
-elif len(st.session_state.hole) == 2:
-    st.info("✅ Hand selected. Add board cards to analyze (or skip for pre-flop analysis).")
+        st.error(f"Error: {str(e)}")
 else:
-    st.info("👆 Click cards above to select your hand and board.")
+    st.info("👆 Select 2 hole cards to get started (board is optional)")
