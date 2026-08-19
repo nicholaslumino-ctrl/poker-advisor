@@ -289,7 +289,6 @@ st.markdown("""
 <style>
     .big-font {font-size:36px !important; font-weight:bold; text-align:center;}
     div.stButton > button {padding: 4px 2px; font-size: 14px; height: 42px;}
-    .card-display {font-size: 24px; padding: 5px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -304,36 +303,130 @@ if 'pot' not in st.session_state:
 if 'bet' not in st.session_state:
     st.session_state.bet = 0
 
-# ---- Selection mode ----
-mode = st.radio("Selecting for:", ["Hole Cards (2)", "Board Cards (up to 5)"], horizontal=True)
-
-# ---- Display current selection ----
-def render_cards(card_list):
-    if not card_list:
-        return "—"
-    spans = []
-    for c in card_list:
-        rank, suit = c[0], c[1]
-        symbol = dict(SUITS)[[s for r,s in [('','')]][0]] if False else None
-    return spans
-
+# ---- Card display function ----
 def cards_to_html(card_list):
     suit_symbols = {'s':'♠','h':'♥','d':'♦','c':'♣'}
     out = []
     for c in card_list:
         rank, suit = c[0], c[1]
         color = SUIT_COLOR[suit]
-        out.append(f'<span style="color:{color}; font-size:26px; margin-right:8px;">{rank}{suit_symbols[suit]}</span>')
+        out.append(f'<span style="color:{color}; font-size:28px; margin-right:8px; font-weight:bold;">{rank}{suit_symbols[suit]}</span>')
     return ''.join(out) if out else "<i>none selected</i>"
 
+# ---- Display current selection ----
 st.markdown(f"**Your Hand:** {cards_to_html(st.session_state.hole)}", unsafe_allow_html=True)
 st.markdown(f"**Board:** {cards_to_html(st.session_state.board)}", unsafe_allow_html=True)
 
-col_clear1, col_clear2, col_clear3 = st.columns(3)
+col_clear1, col_clear2 = st.columns(2)
 with col_clear1:
-    if st.button("Clear Hand"):
+    if st.button("🗑️ Clear Hand"):
         st.session_state.hole = []
 with col_clear2:
-    if st.button("Clear Board"):
+    if st.button("🗑️ Clear Board"):
         st.session_state.board = []
-with col_
+
+st.divider()
+
+# ---- Selection mode ----
+mode = st.radio("Select cards for:", ["Your Hand (2)", "Board (up to 5)"], horizontal=True)
+
+# ---- Card grid ----
+st.write("**Click to add card:**")
+for row_num in range(4):
+    cols = st.columns(13)
+    for col_idx in range(13):
+        card_idx = row_num * 13 + col_idx
+        if card_idx < len(RANKS):
+            rank = RANKS[card_idx]
+            with cols[col_idx]:
+                for suit_sym, suit_code in SUITS:
+                    card_str = rank + suit_code
+                    card_color = SUIT_COLOR[suit_code]
+                    if st.button(f"{rank}{suit_sym}", key=f"{card_str}_{mode}", use_container_width=True):
+                        if mode == "Your Hand (2)":
+                            if len(st.session_state.hole) < 2:
+                                if card_str not in st.session_state.hole:
+                                    st.session_state.hole.append(card_str)
+                                    st.rerun()
+                        else:
+                            if len(st.session_state.board) < 5:
+                                if card_str not in st.session_state.hole and card_str not in st.session_state.board:
+                                    st.session_state.board.append(card_str)
+                                    st.rerun()
+                    break
+
+st.divider()
+
+# ---- Bet sizing ----
+st.write("**Bet Situation:**")
+col1, col2, col3, col4, col5 = st.columns(5)
+
+with col1:
+    if st.button("Check"):
+        st.session_state.bet = 0
+with col2:
+    if st.button("1/3 Pot"):
+        st.session_state.bet = st.session_state.pot // 3
+with col3:
+    if st.button("1/2 Pot"):
+        st.session_state.bet = st.session_state.pot // 2
+with col4:
+    if st.button("Full Pot"):
+        st.session_state.bet = st.session_state.pot
+with col5:
+    if st.button("All-in"):
+        st.session_state.bet = st.session_state.pot * 2
+
+pot_size = st.number_input("Pot Size $", min_value=0, value=st.session_state.pot, key="pot_input")
+st.session_state.pot = pot_size
+bet_to_call = st.session_state.bet
+
+st.caption(f"📊 Pot: ${pot_size} | Bet to call: ${bet_to_call}")
+
+st.divider()
+
+# ---- ANALYSIS ----
+if len(st.session_state.hole) == 2 and len(st.session_state.board) > 0:
+    try:
+        hole_cards = [Card(c) for c in st.session_state.hole]
+        board_cards = [Card(c) for c in st.session_state.board]
+        
+        street = {0: "Pre-flop", 3: "Flop", 4: "Turn", 5: "River"}.get(len(board_cards), "?")
+        
+        equity, draws = calculate_equity_estimate(hole_cards, board_cards)
+        hand_category, pair_context = categorize_hand(hole_cards, board_cards)
+        board_texture = analyze_board_texture(board_cards)
+        
+        strat = get_strategic_recommendation(
+            hand_category, pair_context, board_texture,
+            equity, pot_size, bet_to_call, street
+        )
+        
+        st.markdown(f'<p class="big-font">{strat["action"]}</p>', unsafe_allow_html=True)
+        
+        if strat["sizing"]:
+            st.markdown(f"**Sizing:** {strat['sizing']}")
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Street", street)
+        with c2:
+            st.metric("Category", hand_category)
+        with c3:
+            st.metric("Equity", f"{equity:.0f}%")
+        
+        if board_texture != "N/A":
+            st.caption(f"**Board Texture:** {board_texture}")
+        
+        if pair_context:
+            st.caption(f"**Hand Type:** {pair_context}")
+        
+        st.info(f"**Why:** {strat['reasoning']}")
+        st.success(f"**Game Plan:** {strat['game_plan']}")
+        
+    except Exception as e:
+        st.error(f"Error: {e}")
+elif len(st.session_state.hole) == 2:
+    st.info("✅ Hand selected. Add board cards to analyze (or skip for pre-flop analysis).")
+else:
+    st.info("👆 Click cards above to select your hand and board.")
